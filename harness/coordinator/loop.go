@@ -21,7 +21,10 @@ import (
 const historyPageSize = 256
 
 const (
-	slurpIdleTimeout = time.Millisecond
+	// Batching window for events that arrive together. The loop stays correct
+	// with any value; keep it far below the per-turn budget so the two drains
+	// in every event-loop pass cost microseconds, not milliseconds.
+	slurpIdleTimeout = 50 * time.Microsecond
 	slurpMaxItems    = 100
 )
 
