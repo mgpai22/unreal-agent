@@ -7,6 +7,7 @@ import (
 	"maps"
 	"strings"
 
+	"github.com/unreallabsai/unreal-agent/harness/llm"
 	"github.com/unreallabsai/unreal-agent/internal/apijson"
 )
 
@@ -51,9 +52,9 @@ func newBlockContentBuilder(raw jsontext.Value) (*blockContentBuilder, error) {
 	return block, nil
 }
 
-func (block *blockContentBuilder) handleDelta(raw jsontext.Value) error {
+func (block *blockContentBuilder) handleDelta(raw jsontext.Value) (llm.Delta, error) {
 	if block.finalized {
-		return fmt.Errorf("content block is finalized, cannot handle delta %q", raw)
+		return llm.Delta{}, fmt.Errorf("content block is finalized, cannot handle delta %q", raw)
 	}
 	var delta struct {
 		Type        string `json:"type"`
@@ -63,21 +64,29 @@ func (block *blockContentBuilder) handleDelta(raw jsontext.Value) error {
 		PartialJSON string `json:"partial_json"`
 	}
 	if err := json.Unmarshal(raw, &delta); err != nil {
-		return err
+		return llm.Delta{}, err
 	}
 	switch {
 	case delta.Type == "text_delta" && block.kind == "text":
 		block.text.WriteString(delta.Text)
+		return llm.Delta{Kind: llm.DeltaText, Text: delta.Text}, nil
 	case delta.Type == "thinking_delta" && block.kind == "thinking":
 		block.text.WriteString(delta.Thinking)
+		return llm.Delta{Kind: llm.DeltaReasoning, Text: delta.Thinking}, nil
 	case delta.Type == "signature_delta" && block.kind == "thinking":
 		block.signature.WriteString(delta.Signature)
+		return llm.Delta{}, nil
 	case delta.Type == "input_json_delta" && block.kind == "tool_use":
 		block.input.WriteString(delta.PartialJSON)
+		return llm.Delta{Kind: llm.DeltaToolCall, Text: delta.PartialJSON}, nil
 	default:
-		return fmt.Errorf("unsupported delta %q for %q block", delta.Type, block.kind)
+		return llm.Delta{}, fmt.Errorf("unsupported delta %q for %q block", delta.Type, block.kind)
 	}
-	return nil
+}
+
+func (block *blockContentBuilder) toolName() string {
+	name, _ := block.fields["name"].(string)
+	return name
 }
 
 func (block *blockContentBuilder) handleStop() {

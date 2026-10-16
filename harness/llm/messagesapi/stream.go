@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/unreallabsai/unreal-agent/harness/llm"
 )
 
 type streamingState struct {
@@ -14,6 +16,7 @@ type streamingState struct {
 	body     []byte
 	terminal bool
 	apiError *APIError
+	onDelta  func(llm.Delta)
 }
 
 func (state *streamingState) observe(data []byte) error {
@@ -65,7 +68,15 @@ func (state *streamingState) observe(data []byte) error {
 			return fmt.Errorf("%s requires a nonnegative index", event.Type)
 		}
 		if event.Type == "content_block_start" {
-			return state.message.startBlock(*event.Index, event.ContentBlock)
+			if err := state.message.startBlock(*event.Index, event.ContentBlock); err != nil {
+				return err
+			}
+			if state.onDelta != nil {
+				if block := state.message.blocks[*event.Index]; block != nil && block.kind == "tool_use" {
+					state.onDelta(llm.Delta{Index: *event.Index, Kind: llm.DeltaToolCall, Name: block.toolName()})
+				}
+			}
+			return nil
 		}
 		block := state.message.blocks[*event.Index]
 		if block == nil {
@@ -73,8 +84,13 @@ func (state *streamingState) observe(data []byte) error {
 		}
 		switch event.Type {
 		case "content_block_delta":
-			if err := block.handleDelta(event.Delta); err != nil {
+			delta, err := block.handleDelta(event.Delta)
+			if err != nil {
 				return fmt.Errorf("content block %d: %w", *event.Index, err)
+			}
+			if state.onDelta != nil && (delta.Text != "" || delta.Name != "") {
+				delta.Index = *event.Index
+				state.onDelta(delta)
 			}
 		case "content_block_stop":
 			block.handleStop()

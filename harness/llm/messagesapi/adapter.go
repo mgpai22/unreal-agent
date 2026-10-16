@@ -109,12 +109,12 @@ func NewAdapter(remote *primitives.RemoteClient, config Config) (llm.Adapter, er
 	}, nil
 }
 
-func (adapter *adapter) Respond(ctx context.Context, request llm.Request, _ llm.RequestOptions) (llm.Response, error) {
+func (adapter *adapter) Respond(ctx context.Context, request llm.Request, options llm.RequestOptions) (llm.Response, error) {
 	body, err := requestBody(request, adapter.fallback, adapter.cacheTTL)
 	if err != nil {
 		return llm.Response{}, err
 	}
-	result := adapter.exchange(ctx, body)
+	result := adapter.exchange(ctx, body, options)
 	if adapter.trace != nil && len(result.body) != 0 {
 		adapter.trace(Exchange{RequestBody: body, StatusCode: result.status, ResponseBody: result.body})
 	}

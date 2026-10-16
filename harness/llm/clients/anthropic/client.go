@@ -12,12 +12,13 @@ import (
 const DefaultBaseURL = "https://api.anthropic.com/v1"
 
 type Config struct {
-	APIKey      string
-	BaseURL     string
-	Fallback    *bool
-	CacheTTL    messagesapi.CacheTTL
-	MaxAttempts *int
-	Trace       func(Exchange)
+	APIKey       string
+	BaseURL      string
+	Fallback     *bool
+	CacheTTL     messagesapi.CacheTTL
+	MaxAttempts  *int
+	Trace        func(Exchange)
+	ExtraHeaders map[string]string
 }
 
 type Exchange = messagesapi.Exchange
@@ -38,14 +39,18 @@ func NewClient(config Config) (*Client, error) {
 		baseURL = DefaultBaseURL
 	}
 	remote := primitives.NewRemoteClient()
+	headers := map[string][]string{
+		"X-Api-Key":         {config.APIKey},
+		"Anthropic-Version": {"2023-06-01"},
+		"Content-Type":      {"application/json"},
+	}
+	for name, value := range config.ExtraHeaders {
+		headers[name] = []string{value}
+	}
 	adapter, err := messagesapi.NewAdapter(remote, messagesapi.Config{
 		Endpoint: baseURL + "/messages",
-		Headers: map[string][]string{
-			"X-Api-Key":         {config.APIKey},
-			"Anthropic-Version": {"2023-06-01"},
-			"Content-Type":      {"application/json"},
-		},
-		Trace: config.Trace, MaxAttempts: config.MaxAttempts, Fallback: config.Fallback,
+		Headers:  headers,
+		Trace:    config.Trace, MaxAttempts: config.MaxAttempts, Fallback: config.Fallback,
 		CacheTTL: config.CacheTTL,
 	})
 	if err != nil {

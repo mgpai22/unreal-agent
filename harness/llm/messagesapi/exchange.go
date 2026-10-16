@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/unreallabsai/unreal-agent/harness/llm"
 	"github.com/unreallabsai/unreal-agent/harness/primitives"
 )
 
@@ -22,14 +23,14 @@ type responseAttempt struct {
 	retry   bool
 }
 
-func (adapter *adapter) exchange(ctx context.Context, body []byte) responseAttempt {
+func (adapter *adapter) exchange(ctx context.Context, body []byte, options llm.RequestOptions) responseAttempt {
 	events := make(chan primitives.PrimitiveEvent)
 	for attempt := 1; ; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return responseAttempt{err: err}
 		}
 		request := adapter.remoteRequest(body)
-		result := adapter.exchangeAttempt(ctx, request, events)
+		result := adapter.exchangeAttempt(ctx, request, events, options.OnDelta)
 		if !result.retry || attempt >= adapter.maxAttempts {
 			return result
 		}
@@ -60,12 +61,12 @@ func (adapter *adapter) exchange(ctx context.Context, body []byte) responseAttem
 	}
 }
 
-func (adapter *adapter) exchangeAttempt(ctx context.Context, request primitives.RemoteRequest, events chan primitives.PrimitiveEvent) responseAttempt {
+func (adapter *adapter) exchangeAttempt(ctx context.Context, request primitives.RemoteRequest, events chan primitives.PrimitiveEvent, onDelta func(llm.Delta)) responseAttempt {
 	attemptContext, cancel := context.WithCancel(ctx)
 	defer cancel()
 	adapter.remote.SendRequest(attemptContext, request, events)
 	var result responseAttempt
-	var state streamingState
+	state := streamingState{onDelta: onDelta}
 	var streaming bool
 	var parseErr error
 	for {

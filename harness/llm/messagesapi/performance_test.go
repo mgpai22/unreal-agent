@@ -67,7 +67,7 @@ func BenchmarkStreamDelta(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
 				block := blockContentBuilder{kind: test.kind}
-				if err := block.handleDelta(raw); err != nil {
+				if _, err := block.handleDelta(raw); err != nil {
 					b.Fatal(err)
 				}
 			}
